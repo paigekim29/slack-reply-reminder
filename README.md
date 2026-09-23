@@ -9,6 +9,7 @@ A Slack bot that reminds each mentioned person when they have not replied during
 - Sends reminders on weekdays from 07:00–16:00 in Korea (`Asia/Seoul`) and 09:00–18:00 in US timezones.
 - Refreshes each person's Slack profile timezone every hour, so timezone changes while traveling are picked up.
 - Provides `Open message`, `In 30 minutes`, `Done`, and `No reply needed` buttons.
+- Adds ✅ to the mentioned message for `Done` and ➖ for `No reply needed`.
 - Persists state in `data/reminders.json`.
 
 Because of Slack API limitations, the bot cannot see channels it has not joined or your private DMs. Replies must be posted in the original thread to be marked complete automatically.

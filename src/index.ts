@@ -130,11 +130,24 @@ app.action("reminder_snooze", async ({ ack, action, respond }) => {
 });
 
 for (const actionId of ["reminder_done", "reminder_not_needed"] as const) {
-  app.action(actionId, async ({ ack, action, respond }) => {
+  app.action(actionId, async ({ ack, action, respond, client, logger }) => {
     await ack();
     if (action.type !== "button" || !action.value) return;
     const reminder = store.get(action.value);
     if (!reminder) return;
+
+    const reaction =
+      actionId === "reminder_done" ? "white_check_mark" : "heavy_minus_sign";
+    try {
+      await client.reactions.add({
+        channel: reminder.channel,
+        timestamp: reminder.messageTs,
+        name: reaction,
+      });
+    } catch (error) {
+      logger.warn(`Could not add ${reaction} reaction to ${reminder.id}`, error);
+    }
+
     await resolve(reminder, actionId === "reminder_done" ? "done" : "not-needed");
     await respond({
       replace_original: true,
