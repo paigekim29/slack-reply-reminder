@@ -1,4 +1,4 @@
-# Slack Reply Reminder
+# Cookie Nudge
 
 A Slack bot that sends you a DM during working hours when you have not replied to a message that mentions you.
 
@@ -19,7 +19,7 @@ Because of Slack API limitations, the bot cannot see channels it has not joined 
 2. Paste the contents of `slack-manifest.yaml` and create the app.
 3. Under **Basic Information → App-Level Tokens**, create a token with the `connections:write` scope.
 4. Go to **OAuth & Permissions → Install to Workspace**.
-5. Run `/invite @Reply Reminder` in every channel you want the bot to monitor.
+5. Run `/invite @Cookie Nudge` in every channel you want the bot to monitor.
 
 You will need:
 
@@ -50,10 +50,10 @@ The app uses Socket Mode, so it does not need a public server or Request URL. Fo
 ## Commands
 
 ```text
-/reply-reminder
-/reply-reminder timezone Asia/Seoul
-/reply-reminder timezone America/Los_Angeles
-/reply-reminder timezone auto
+/cookie-nudge
+/cookie-nudge timezone Asia/Seoul
+/cookie-nudge timezone America/Los_Angeles
+/cookie-nudge timezone auto
 ```
 
 `timezone auto` uses the timezone from your Slack profile. A timezone changed with this command is temporary; restarting the process restores the `TIMEZONE_OVERRIDE` value from `.env`.

@@ -1,13 +1,13 @@
 display_information:
-  name: Reply Reminder
+  name: Cookie Nudge
   description: Reminds you about unanswered mentions during working hours.
   background_color: "#2E6B5B"
 features:
   bot_user:
-    display_name: Reply Reminder
+    display_name: Cookie Nudge
     always_online: false
   slash_commands:
-    - command: /reply-reminder
+    - command: /cookie-nudge
       description: Check reply reminder status and timezone.
       usage_hint: "timezone Asia/Seoul | timezone auto"
       should_escape: false

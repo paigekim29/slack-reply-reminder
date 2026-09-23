@@ -118,7 +118,7 @@ for (const actionId of ["reminder_done", "reminder_not_needed"] as const) {
   });
 }
 
-app.command("/reply-reminder", async ({ ack, command, respond, client }) => {
+app.command("/cookie-nudge", async ({ ack, command, respond, client }) => {
   await ack();
   const [operation, value] = command.text.trim().split(/\s+/, 2);
 
