@@ -4,6 +4,7 @@ export type PendingReminder = {
   messageTs: string;
   threadTs: string;
   authorId: string;
+  targetUserId: string;
   text: string;
   permalink?: string;
   createdAt: string;

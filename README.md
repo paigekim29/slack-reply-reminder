@@ -1,13 +1,13 @@
 # Cookie Nudge
 
-A Slack bot that sends you a DM during working hours when you have not replied to a message that mentions you.
+A Slack bot that reminds each mentioned person when they have not replied during their local working hours.
 
 ## How it works
 
-- Tracks mentions of `TARGET_USER_ID` in public and private channels the bot has joined.
-- Sends a DM if you have not replied in the message thread after 20 minutes by default.
+- Tracks every human user mentioned in public and private channels the bot has joined.
+- Sends each mentioned person a DM if they have not replied in the message thread after 20 minutes by default.
 - Sends reminders on weekdays from 07:00–16:00 in Korea (`Asia/Seoul`) and 09:00–18:00 in US timezones.
-- Refreshes your Slack profile timezone every hour, so timezone changes while traveling are picked up.
+- Refreshes each person's Slack profile timezone every hour, so timezone changes while traveling are picked up.
 - Provides `Open message`, `In 30 minutes`, `Done`, and `No reply needed` buttons.
 - Persists state in `data/reminders.json`.
 
@@ -26,7 +26,6 @@ You will need:
 - Bot User OAuth Token (`xoxb-...`)
 - App-Level Token (`xapp-...`)
 - Signing Secret
-- Your Slack Member ID (open your profile → three-dot menu → Copy member ID)
 
 ## 2. Run it
 
@@ -38,7 +37,7 @@ npm install
 cp .env.example .env
 ```
 
-Add the tokens and `TARGET_USER_ID` to `.env`, then run:
+Add the three Slack credentials to `.env`, then run:
 
 ```bash
 npm test
@@ -56,7 +55,7 @@ The app uses Socket Mode, so it does not need a public server or Request URL. Fo
 /cookie-nudge timezone auto
 ```
 
-`timezone auto` uses the timezone from your Slack profile. A timezone changed with this command is temporary; restarting the process restores the `TIMEZONE_OVERRIDE` value from `.env`.
+`timezone auto` uses the command user's Slack profile timezone. Timezone overrides are kept separately for each user and reset when the process restarts.
 
 ## Customize working hours
 

@@ -9,21 +9,19 @@ const required = [
   "SLACK_BOT_TOKEN",
   "SLACK_APP_TOKEN",
   "SLACK_SIGNING_SECRET",
-  "TARGET_USER_ID",
 ] as const;
 
 for (const name of required) {
   if (!process.env[name]) throw new Error(`Missing required environment variable: ${name}`);
 }
 
-const targetUserId = process.env.TARGET_USER_ID!;
 const initialDelay = positiveNumber("INITIAL_DELAY_MINUTES", 20);
 const repeatDelay = positiveNumber("REPEAT_DELAY_MINUTES", 60);
 const maxReminders = positiveNumber("MAX_REMINDERS", 3);
 const schedules = loadSchedules(process.env.WORK_SCHEDULES_JSON);
 const store = new ReminderStore(process.env.DATA_FILE ?? "./data/reminders.json");
-let timezoneOverride = process.env.TIMEZONE_OVERRIDE;
-let timezoneCache: { value: string; expiresAt: number } | undefined;
+const timezoneOverrides = new Map<string, string>();
+const timezoneCache = new Map<string, { value: string; expiresAt: number }>();
 let schedulerRunning = false;
 
 const app = new App({
@@ -49,21 +47,27 @@ app.message(async ({ message, client, logger }) => {
   const event = message as SlackMessage;
   if (event.subtype || event.bot_id || !event.user || !event.text) return;
 
-  if (event.user === targetUserId && event.thread_ts) {
-    for (const reminder of store.findByThread(event.channel, event.thread_ts)) {
+  if (event.thread_ts) {
+    for (const reminder of store.findByThread(
+      event.channel,
+      event.thread_ts,
+      event.user,
+    )) {
       await resolve(reminder, "replied");
       logger.info(`Resolved ${reminder.id}: reply detected`);
     }
-    return;
   }
 
-  if (event.user === targetUserId || !event.text.includes(`<@${targetUserId}>`)) return;
-  if (store.findByMessage(event.channel, event.ts)) return;
+  const mentionedUserIds = [
+    ...new Set(
+      [...event.text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]+)?>/g)]
+        .map((match) => match[1])
+        .filter((userId) => userId !== event.user),
+    ),
+  ];
+  if (mentionedUserIds.length === 0) return;
 
-  const zone = await getTimezone(client);
   const now = DateTime.utc();
-  const candidate = now.plus({ minutes: initialDelay });
-  const due = nextWorkingTime(candidate, zone, scheduleFor(zone, schedules));
   let permalink: string | undefined;
 
   try {
@@ -76,19 +80,40 @@ app.message(async ({ message, client, logger }) => {
     logger.warn("Could not obtain message permalink", error);
   }
 
-  await store.set({
-    id: `${event.channel}:${event.ts}`,
-    channel: event.channel,
-    messageTs: event.ts,
-    threadTs: event.thread_ts ?? event.ts,
-    authorId: event.user,
-    text: event.text,
-    permalink,
-    createdAt: now.toISO()!,
-    dueAt: due.toUTC().toISO()!,
-    reminderCount: 0,
-  });
-  logger.info(`Tracking mention ${event.channel}:${event.ts}, due ${due.toISO()}`);
+  for (const targetUserId of mentionedUserIds) {
+    if (store.findByMessage(event.channel, event.ts, targetUserId)) continue;
+
+    try {
+      const target = await client.users.info({ user: targetUserId });
+      if (target.user?.is_bot || target.user?.deleted) continue;
+    } catch (error) {
+      logger.warn(`Could not inspect mentioned user ${targetUserId}`, error);
+      continue;
+    }
+
+    const zone = await getTimezone(client, targetUserId);
+    const due = nextWorkingTime(
+      now.plus({ minutes: initialDelay }),
+      zone,
+      scheduleFor(zone, schedules),
+    );
+    const id = `${event.channel}:${event.ts}:${targetUserId}`;
+
+    await store.set({
+      id,
+      channel: event.channel,
+      messageTs: event.ts,
+      threadTs: event.thread_ts ?? event.ts,
+      authorId: event.user,
+      targetUserId,
+      text: event.text,
+      permalink,
+      createdAt: now.toISO()!,
+      dueAt: due.toUTC().toISO()!,
+      reminderCount: 0,
+    });
+    logger.info(`Tracking mention ${id}, due ${due.toISO()}`);
+  }
 });
 
 app.action("reminder_snooze", async ({ ack, action, respond }) => {
@@ -121,22 +146,23 @@ for (const actionId of ["reminder_done", "reminder_not_needed"] as const) {
 app.command("/cookie-nudge", async ({ ack, command, respond, client }) => {
   await ack();
   const [operation, value] = command.text.trim().split(/\s+/, 2);
+  const userId = command.user_id;
 
   if (operation === "timezone" && value) {
     if (value === "auto") {
-      timezoneOverride = undefined;
-      timezoneCache = undefined;
+      timezoneOverrides.delete(userId);
+      timezoneCache.delete(userId);
     } else if (DateTime.now().setZone(value).isValid) {
-      timezoneOverride = value;
+      timezoneOverrides.set(userId, value);
     } else {
       await respond(`That is not a valid IANA timezone: \`${value}\``);
       return;
     }
   }
 
-  const zone = await getTimezone(client);
+  const zone = await getTimezone(client, userId);
   const schedule = scheduleFor(zone, schedules);
-  const pending = store.active().length;
+  const pending = store.activeForUser(userId).length;
   await respond(
     `Current timezone: \`${zone}\`\nWorking hours: ${schedule.start}–${schedule.end} (Monday–Friday)\nPending replies: ${pending}`,
   );
@@ -147,13 +173,13 @@ async function runScheduler(): Promise<void> {
   schedulerRunning = true;
   try {
     const now = DateTime.utc();
-    const zone = await getTimezone(app.client);
-    const schedule = scheduleFor(zone, schedules);
 
     for (const reminder of store.active()) {
       if (reminder.reminderCount >= maxReminders) continue;
       if (DateTime.fromISO(reminder.dueAt) > now) continue;
 
+      const zone = await getTimezone(app.client, reminder.targetUserId);
+      const schedule = scheduleFor(zone, schedules);
       if (!isWorkingTime(now, zone, schedule)) {
         reminder.dueAt = nextWorkingTime(now, zone, schedule).toUTC().toISO()!;
         await store.set(reminder);
@@ -161,7 +187,7 @@ async function runScheduler(): Promise<void> {
       }
 
       await app.client.chat.postMessage({
-        channel: targetUserId,
+        channel: reminder.targetUserId,
         text: `You haven't replied to <@${reminder.authorId}>'s message yet.`,
         blocks: reminderBlocks(reminder),
       });
@@ -218,12 +244,20 @@ function reminderBlocks(reminder: PendingReminder) {
   ];
 }
 
-async function getTimezone(client: typeof app.client): Promise<string> {
-  if (timezoneOverride) return timezoneOverride;
-  if (timezoneCache && timezoneCache.expiresAt > Date.now()) return timezoneCache.value;
-  const response = await client.users.info({ user: targetUserId });
+async function getTimezone(
+  client: typeof app.client,
+  userId: string,
+): Promise<string> {
+  const override = timezoneOverrides.get(userId) ?? process.env.TIMEZONE_OVERRIDE;
+  if (override) return override;
+  const cached = timezoneCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const response = await client.users.info({ user: userId });
   const zone = response.user?.tz ?? "Asia/Seoul";
-  timezoneCache = { value: zone, expiresAt: Date.now() + 60 * 60 * 1000 };
+  timezoneCache.set(userId, {
+    value: zone,
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
   return zone;
 }
 

@@ -12,7 +12,11 @@ export class ReminderStore {
     try {
       const raw = await readFile(this.filename, "utf8");
       const items = JSON.parse(raw) as PendingReminder[];
-      this.reminders = new Map(items.map((item) => [item.id, item]));
+      this.reminders = new Map(
+        items
+          .filter((item) => item.targetUserId)
+          .map((item) => [item.id, item]),
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -28,15 +32,33 @@ export class ReminderStore {
     return [...this.reminders.values()].filter((item) => !item.resolvedAt);
   }
 
-  findByMessage(channel: string, messageTs: string): PendingReminder | undefined {
+  activeForUser(userId: string): PendingReminder[] {
+    return this.active().filter((item) => item.targetUserId === userId);
+  }
+
+  findByMessage(
+    channel: string,
+    messageTs: string,
+    targetUserId: string,
+  ): PendingReminder | undefined {
     return this.active().find(
-      (item) => item.channel === channel && item.messageTs === messageTs,
+      (item) =>
+        item.channel === channel &&
+        item.messageTs === messageTs &&
+        item.targetUserId === targetUserId,
     );
   }
 
-  findByThread(channel: string, threadTs: string): PendingReminder[] {
+  findByThread(
+    channel: string,
+    threadTs: string,
+    targetUserId: string,
+  ): PendingReminder[] {
     return this.active().filter(
-      (item) => item.channel === channel && item.threadTs === threadTs,
+      (item) =>
+        item.channel === channel &&
+        item.threadTs === threadTs &&
+        item.targetUserId === targetUserId,
     );
   }
 
