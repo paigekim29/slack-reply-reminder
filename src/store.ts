@@ -4,6 +4,7 @@ import type { PendingReminder } from "./types.js";
 
 export class ReminderStore {
   private reminders = new Map<string, PendingReminder>();
+  private disabledUserIds = new Set<string>();
   private writeQueue = Promise.resolve();
 
   constructor(private readonly filename: string) {}
@@ -11,11 +12,17 @@ export class ReminderStore {
   async load(): Promise<void> {
     try {
       const raw = await readFile(this.filename, "utf8");
-      const items = JSON.parse(raw) as PendingReminder[];
+      const parsed = JSON.parse(raw) as
+        | PendingReminder[]
+        | { reminders: PendingReminder[]; disabledUserIds?: string[] };
+      const items = Array.isArray(parsed) ? parsed : parsed.reminders;
       this.reminders = new Map(
         items
           .filter((item) => item.targetUserId)
           .map((item) => [item.id, item]),
+      );
+      this.disabledUserIds = new Set(
+        Array.isArray(parsed) ? [] : (parsed.disabledUserIds ?? []),
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -34,6 +41,23 @@ export class ReminderStore {
 
   activeForUser(userId: string): PendingReminder[] {
     return this.active().filter((item) => item.targetUserId === userId);
+  }
+
+  isUserEnabled(userId: string): boolean {
+    return !this.disabledUserIds.has(userId);
+  }
+
+  async setUserEnabled(userId: string, enabled: boolean): Promise<void> {
+    if (enabled) {
+      this.disabledUserIds.delete(userId);
+    } else {
+      this.disabledUserIds.add(userId);
+      for (const reminder of this.activeForUser(userId)) {
+        reminder.resolvedAt = new Date().toISOString();
+        reminder.resolution = "disabled";
+      }
+    }
+    await this.persist();
   }
 
   findByMessage(
@@ -73,7 +97,14 @@ export class ReminderStore {
       const temporary = `${this.filename}.tmp`;
       await writeFile(
         temporary,
-        `${JSON.stringify([...this.reminders.values()], null, 2)}\n`,
+        `${JSON.stringify(
+          {
+            reminders: [...this.reminders.values()],
+            disabledUserIds: [...this.disabledUserIds],
+          },
+          null,
+          2,
+        )}\n`,
       );
       await rename(temporary, this.filename);
     });

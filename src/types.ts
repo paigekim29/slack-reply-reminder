@@ -11,7 +11,7 @@ export type PendingReminder = {
   dueAt: string;
   reminderCount: number;
   resolvedAt?: string;
-  resolution?: "replied" | "done" | "not-needed";
+  resolution?: "replied" | "done" | "not-needed" | "disabled";
 };
 
 export type WorkSchedule = {

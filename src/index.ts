@@ -81,6 +81,7 @@ app.message(async ({ message, client, logger }) => {
   }
 
   for (const targetUserId of mentionedUserIds) {
+    if (!store.isUserEnabled(targetUserId)) continue;
     if (store.findByMessage(event.channel, event.ts, targetUserId)) continue;
 
     try {
@@ -161,6 +162,18 @@ app.command("/cookie-nudge", async ({ ack, command, respond, client }) => {
   const [operation, value] = command.text.trim().split(/\s+/, 2);
   const userId = command.user_id;
 
+  if (operation === "disable") {
+    await store.setUserEnabled(userId, false);
+    await respond("Cookie Nudge reminders are now disabled for you.");
+    return;
+  }
+
+  if (operation === "enable") {
+    await store.setUserEnabled(userId, true);
+    await respond("Cookie Nudge reminders are now enabled for you.");
+    return;
+  }
+
   if (operation === "timezone" && value) {
     if (value === "auto") {
       timezoneOverrides.delete(userId);
@@ -171,13 +184,19 @@ app.command("/cookie-nudge", async ({ ack, command, respond, client }) => {
       await respond(`That is not a valid IANA timezone: \`${value}\``);
       return;
     }
+  } else if (operation && operation !== "status") {
+    await respond(
+      "Usage: `/cookie-nudge status`, `/cookie-nudge enable`, `/cookie-nudge disable`, or `/cookie-nudge timezone <IANA timezone|auto>`",
+    );
+    return;
   }
 
   const zone = await getTimezone(client, userId);
   const schedule = scheduleFor(zone, schedules);
   const pending = store.activeForUser(userId).length;
+  const state = store.isUserEnabled(userId) ? "enabled" : "disabled";
   await respond(
-    `Current timezone: \`${zone}\`\nWorking hours: ${schedule.start}–${schedule.end} (Monday–Friday)\nPending replies: ${pending}`,
+    `Reminders: *${state}*\nCurrent timezone: \`${zone}\`\nWorking hours: ${schedule.start}–${schedule.end} (Monday–Friday)\nPending replies: ${pending}`,
   );
 });
 
@@ -188,6 +207,7 @@ async function runScheduler(): Promise<void> {
     const now = DateTime.utc();
 
     for (const reminder of store.active()) {
+      if (!store.isUserEnabled(reminder.targetUserId)) continue;
       if (reminder.reminderCount >= maxReminders) continue;
       if (DateTime.fromISO(reminder.dueAt) > now) continue;
 

@@ -51,10 +51,15 @@ The app uses Socket Mode, so it does not need a public server or Request URL. Fo
 
 ```text
 /cookie-nudge
+/cookie-nudge status
+/cookie-nudge enable
+/cookie-nudge disable
 /cookie-nudge timezone Asia/Seoul
 /cookie-nudge timezone America/Los_Angeles
 /cookie-nudge timezone auto
 ```
+
+`disable` stops future reminders for that user and cancels their pending reminders. `enable` turns them back on. Users are enabled by default.
 
 `timezone auto` uses the command user's Slack profile timezone. Timezone overrides are kept separately for each user and reset when the process restarts.
 
